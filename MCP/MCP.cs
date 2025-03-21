@@ -19,6 +19,13 @@ using System.Windows.Forms;
 using System.IO;
 using System.Windows.Forms.DataVisualization.Charting;
 using System.Runtime.Serialization.Formatters.Binary;
+using Microsoft.ML.Data;
+using Microsoft.ML;
+using Microsoft.ML.Trainers;
+
+
+
+
 
 
 namespace MCP
@@ -96,6 +103,24 @@ namespace MCP
         /// <summary>   Array of type Concurrent_data which holds ALL concurrent data. </summary>
         Concurrent_data[] Conc_Data_All = new Concurrent_data[0];
 
+
+        ////////////////////////////////////////////////////////////////////////////////////////////////////
+        /// <summary>
+        /// P.N. Addition. This one follows the same structure as Concurrent data but with Pressure added, so it
+        /// can be used as a feature in multifeature models
+        /// Array of type Concurrent_data where each entry contains Date/Time, Ref_WS, Ref_WD, Ref_Temp
+        /// Target_WS, Target_WD. This array holds the concurrent data for a specified window (i.e. not
+        /// necessarily all concurrent data)
+        /// </summary>
+        ////////////////////////////////////////////////////////////////////////////////////////////////////
+
+        public Concurrent_data_ML[] Conc_Data_ML = new Concurrent_data_ML[0];
+        /// <summary>   True if conccurent data is defined. </summary>
+        public bool Got_Conc_ML = false;
+
+        /// <summary>   Array of type Concurrent_data which holds ALL concurrent data. </summary>
+        Concurrent_data_ML[] Conc_Data_All_ML = new Concurrent_data_ML[0];
+
         ////////////////////////////////////////////////////////////////////////////////////////////////////
         /// <summary>   Number of Wind Direction sectors to conduct MCP. </summary>
         ///
@@ -162,6 +187,11 @@ namespace MCP
         public Lin_MCP MCP_Varrat = new Lin_MCP();
         /// <summary>   Object of type Matrix_Obj containing results of Matrix-LastWS MCP. </summary>
         public Matrix_Obj MCP_Matrix = new Matrix_Obj();
+
+        //PN addition, creating this classes in order to be able to use the with the ML models
+        public Lin_MCP_MultiFeature Lasso= new Lin_MCP_MultiFeature();
+        public Lin_MCP_MultiFeature Ridge = new Lin_MCP_MultiFeature();
+
 
         /// <summary>   Size of the window step size (in months) used in uncertainty calculations. </summary>
         int Uncert_Step_size = 1;
@@ -297,6 +327,9 @@ namespace MCP
             public float This_WD;
             /// <summary>   Temperature. </summary>
             public float This_Temp;
+            /// <summary>   P.N. addition for ML. Pressure. </summary>
+            public float This_Pressure;
+
         }
 
         ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -324,6 +357,28 @@ namespace MCP
             /// <summary>   Reference temperature. </summary>
             public float Ref_Temp;
         }
+
+        /// <summary>
+        /// P.N. addition. Adding more values to the concurrent data since there aregoing to be more features in 
+        /// the reference data for ML models.
+        /// </summary>
+        
+        
+        [Serializable()]
+        public class Concurrent_data_ML
+        {
+            public DateTime This_Date { get; set; }  
+
+            [ColumnName("Label")]
+            public float Target_WS { get; set; }
+
+            public float Ref_WS { get; set; }
+            public float Ref_WD { get; set; }   
+            public float Ref_Pressure { get; set; }
+            public float Target_WD { get; set; } 
+            public float Ref_Temp { get; set; }
+        }
+
 
         ////////////////////////////////////////////////////////////////////////////////////////////////////
         /// <summary>
@@ -391,6 +446,97 @@ namespace MCP
                 LT_WS_Est = null;
             }
         }
+
+        [Serializable()]
+        public struct Lin_MCP_MultiFeature
+        {
+            ////////////////////////////////////////////////////////////////////////////////////////////////////
+            /// <summary>
+            /// P.N. addition.
+            /// Coefficients (weights) of the multivariate linear MCP model for each wind direction (WD) sector,
+            /// each hourly interval, and each temperature interval.
+            /// 
+            /// Dimensions: [WD_index, Hour_index, Temp_index, Feature_index]
+            /// Example:
+            /// - WD_index: Index representing the wind direction sector
+            /// - Hour_index: Index representing the hour of the day
+            /// - Temp_index: Index representing the temperature interval
+            /// - Feature_index: Index representing the input feature (e.g., 0 = reference wind speed, 
+            ///   1 = reference temperature, 2 = reference pressure, etc.)
+            /// </summary>
+            ////////////////////////////////////////////////////////////////////////////////////////////////////
+            public float[,,,] Weights;
+
+            ////////////////////////////////////////////////////////////////////////////////////////////////////
+            /// <summary>
+            /// Intercept of the multivariate linear MCP model for each WD sector, each hourly interval,
+            /// and each temperature interval.
+            /// 
+            /// Dimensions: [WD_index, Hour_index, Temp_index]
+            /// </summary>
+            ////////////////////////////////////////////////////////////////////////////////////////////////////
+            public float[,,] Intercept;
+
+            ////////////////////////////////////////////////////////////////////////////////////////////////////
+            /// <summary>
+            /// R² value of the multivariate linear MCP model for each WD sector, each hourly interval,
+            /// and each temperature interval.
+            /// 
+            /// Dimensions: [WD_index, Hour_index, Temp_index]
+            /// </summary>
+            ////////////////////////////////////////////////////////////////////////////////////////////////////
+            public float[,,] R_sq;
+
+            ////////////////////////////////////////////////////////////////////////////////////////////////////
+            /// <summary>
+            /// Weights of the model using all data (no segmentation by WD, hour, or temperature),
+            /// stored in a one-dimensional array for all features.
+            /// 
+            /// Dimensions: [Feature_index]
+            /// </summary>
+            ////////////////////////////////////////////////////////////////////////////////////////////////////
+            public float[] All_Weights;
+
+            ////////////////////////////////////////////////////////////////////////////////////////////////////
+            /// <summary>
+            /// Intercept of the model using all data (no segmentation).
+            /// </summary>
+            ////////////////////////////////////////////////////////////////////////////////////////////////////
+            public float All_Intercept;
+
+            ////////////////////////////////////////////////////////////////////////////////////////////////////
+            /// <summary>
+            /// R² of the model using all data (no segmentation).
+            /// </summary>
+            ////////////////////////////////////////////////////////////////////////////////////////////////////
+            public float All_R_sq;
+
+            ////////////////////////////////////////////////////////////////////////////////////////////////////
+            /// <summary>
+            /// Time series of wind speeds estimated at the target site based on the multivariate MCP model 
+            /// and the reference variables.
+            /// </summary>
+            ////////////////////////////////////////////////////////////////////////////////////////////////////
+            public Site_data[] LT_WS_Est;
+
+            ////////////////////////////////////////////////////////////////////////////////////////////////////
+            /// <summary>
+            /// Clears the Lin_MCP_MultiFeature object to its blank state.
+            /// Sets the arrays to null.
+            /// </summary>
+            ////////////////////////////////////////////////////////////////////////////////////////////////////
+            public void Clear()
+            {
+                Weights = null;
+                Intercept = null;
+                R_sq = null;
+                All_Weights = null;
+                LT_WS_Est = null;
+            }
+        }
+
+
+
 
         ////////////////////////////////////////////////////////////////////////////////////////////////////
         /// <summary>   Structure defined to hold Method of Bins MCP statistics. </summary>
@@ -588,7 +734,7 @@ namespace MCP
 
             if (filename != "")
             {
-                Import_Reference_data(filename);
+                Import_Reference_data_ML(filename);
 
                 
                 Set_Conc_Dates_On_Form();
@@ -737,6 +883,147 @@ namespace MCP
 
             Got_Ref = true;
         }
+
+
+        ////////////////////////////////////////////////////////////////////////////////////////////////////
+        /// <summary>   P.N. Addition. Imports reference wind speed, wind direction, temperature and pressure data. </summary>
+        ///
+        /// <remarks>   OEE, 10/19/2017. </remarks>
+        ///
+        /// <param name="filename"> Filename of the reference datafile. </param>
+        ////////////////////////////////////////////////////////////////////////////////////////////////////
+
+        public void Import_Reference_data_ML(string filename)
+
+        {
+            string line;
+            DateTime This_Date;
+            float This_WS;
+            float This_WD;
+            float This_temp;
+            float This_Pressure;
+
+            int Ref_count = 0;
+            // Add time series data every 1000 data points (to speed up computation time by not resizing array every time)
+            int New_data_count = 0;
+            int Catch_Counter = 0;
+            Site_data[] TS_data = null;
+            Array.Resize(ref TS_data, 1000);
+
+            StreamReader file;
+            try
+            {
+                file = new StreamReader(filename);
+            }
+            catch
+            {
+                MessageBox.Show("Error opening the reference data file. Check that it's not open in another program.", "", MessageBoxButtons.OK);
+                return;
+            }
+
+            Ref_filename = filename;
+            txtLoadedReference.Text = filename;
+            while ((line = file.ReadLine()) != null)
+            {
+                try
+                {
+                    Char[] delims = { ',' };
+                    String[] substrings = line.Split(delims);
+                    // Only read in data intervals with valid WS & WD
+                    if (substrings[1] != "NaN" && substrings[2] != "NaN" && substrings[3] != "NaN" && substrings[4] != "NaN" && Convert.ToSingle(substrings[1]) > 0 && Convert.ToSingle(substrings[3]) > -270)
+                    {
+                        This_Date = Convert.ToDateTime(substrings[0]);
+                        This_WS = Convert.ToSingle(substrings[1]);
+                        This_WD = Convert.ToSingle(substrings[2]);
+                        This_temp = Convert.ToSingle(substrings[3]);
+                        This_Pressure = Convert.ToSingle(substrings[4]);
+
+                        if (New_data_count < 1000)
+                        {
+                            TS_data[New_data_count].This_Date = This_Date;
+                            TS_data[New_data_count].This_WS = This_WS;
+                            TS_data[New_data_count].This_WD = This_WD;
+                            TS_data[New_data_count].This_Temp = This_temp;
+                            TS_data[New_data_count].This_Pressure = This_Pressure;
+                            New_data_count = New_data_count + 1;
+                        }
+                        else
+                        {
+                            Array.Resize(ref Ref_Data, Ref_count + New_data_count);
+                            for (int i = Ref_count; i < Ref_count + New_data_count; i++)
+                            {
+                                Ref_Data[i].This_Date = TS_data[i - Ref_count].This_Date;
+                                Ref_Data[i].This_WS = TS_data[i - Ref_count].This_WS;
+                                Ref_Data[i].This_WD = TS_data[i - Ref_count].This_WD;
+                                Ref_Data[i].This_Temp = TS_data[i - Ref_count].This_Temp;
+                                Ref_Data[i].This_Pressure = TS_data[i - Ref_count].This_Pressure;
+                            }
+
+                            Ref_count = Ref_count + New_data_count;
+
+                            New_data_count = 0;
+                            Array.Resize(ref TS_data, 1000);
+
+                            TS_data[New_data_count].This_Date = This_Date;
+                            TS_data[New_data_count].This_WS = This_WS;
+                            TS_data[New_data_count].This_WD = This_WD;
+                            TS_data[New_data_count].This_Temp = This_temp;
+                            TS_data[New_data_count].This_Pressure = This_Pressure;
+                            New_data_count = New_data_count + 1;
+                        }
+                    }
+
+                }
+                catch
+                {
+                    if ((New_data_count > 10) || (Catch_Counter > 20)) // only break if an error occurs past the header
+                    {
+                        MessageBox.Show("Error reading in reference data. Make sure that the file contains four columns: Time Stamp, WS, WD, Temp");
+                        txtLoadedReference.Text = "";
+                        Ref_filename = "";
+                        return;
+                    }
+
+                    Catch_Counter++;
+                }
+            }
+
+
+            // add last of time series (< 1000)
+            Array.Resize(ref Ref_Data, Ref_count + New_data_count);
+            for (int i = Ref_count; i < Ref_count + New_data_count; i++)
+            {
+                Ref_Data[i].This_Date = TS_data[i - Ref_count].This_Date;
+                Ref_Data[i].This_WS = TS_data[i - Ref_count].This_WS;
+                Ref_Data[i].This_WD = TS_data[i - Ref_count].This_WD;
+                Ref_Data[i].This_Temp = TS_data[i - Ref_count].This_Temp;
+                Ref_Data[i].This_Pressure = TS_data[i - Ref_count].This_Pressure;
+            }
+            Ref_count = Ref_count + New_data_count;
+
+            file.Close();
+
+            // Find start and end dates (in case the data file wasn't chronologically sorted)
+            Ref_Start = Ref_Data[0].This_Date;
+            Ref_End = Ref_Data[Ref_count - 1].This_Date;
+
+            for (int i = 0; i < Ref_count; i++)
+            {
+                if (Ref_Data[i].This_Date < Ref_Start)
+                    Ref_Start = Ref_Data[i].This_Date;
+
+                if (Ref_Data[i].This_Date > Ref_End)
+                    Ref_End = Ref_Data[i].This_Date;
+            }
+
+            Export_Start = Ref_Start;
+            date_Export_Start.Value = Export_Start;
+            Export_End = Ref_End;
+            date_Export_End.Value = Export_End;
+
+            Got_Ref = true;
+        }
+
 
         ////////////////////////////////////////////////////////////////////////////////////////////////////
         /// <summary>
@@ -1264,9 +1551,8 @@ namespace MCP
                            /* if (This_WD_ind == 1 && This_Hour_ind == 2 && This_Temp_ind == 1 & Min_WS == 6.5)
                             {
                                 MessageBox.Show("Ref WS = " + These_Conc.Ref_WS.ToString() + ", Target WS = " + These_Conc.Target_WS.ToString() + ", Ref WD = " + These_Conc.Ref_WD.ToString());
-                            }
-
-  */                          if (Target_or_Ref == "Target")
+                            }*/                          
+                            if (Target_or_Ref == "Target")
                                 These_WS[WD_count] = These_Conc.Target_WS;
                             else
                                 These_WS[WD_count] = These_Conc.Ref_WS;
@@ -1513,6 +1799,93 @@ namespace MCP
             else
                 Got_Conc = true;
             
+        }
+
+
+        ////////////////////////////////////////////////////////////////////////////////////////////////////
+        /// <summary>
+        /// P.N. Addition to include the  other features for the ML models
+        /// Creates array of Concurrent_data containing WS &amp; WD at reference and target sites.
+        /// </summary>
+        ///
+        /// <remarks>   OEE, 10/19/2017. </remarks>
+        ///
+        /// <param name="Conc_form">    If True, uses start and end date on form otherwise uses dates in
+        ///                             memory
+        ///                              (i.e. this is done in uncertainty calculations). </param>
+        /// <param name="Start">        Start Date/Time of concurrent data set. </param>
+        /// <param name="End">          End Date/Time of concurrent data set. </param>
+        ////////////////////////////////////////////////////////////////////////////////////////////////////
+
+        public void Find_Concurrent_Data_ML(bool Conc_form, DateTime Start, DateTime End)
+        {
+            int Conc_count = 0;
+            int Ref_Start_ind = 0;
+            int Targ_Start_ind = 0;
+
+            // Read the start and end dates for concurrent period
+            if (Conc_form == true)
+            {
+                Conc_Start = date_Corr_Start.Value;
+                Conc_End = date_Corr_End.Value;
+            }
+            else
+            {
+                Conc_Start = Start;
+                Conc_End = End;
+            }
+
+            if (Ref_Data.Length == 0 || Target_Data.Length == 0) return;
+
+            foreach (Site_data RefSite in Ref_Data)
+            {
+                if (RefSite.This_Date < Conc_Start)
+                    Ref_Start_ind++;
+                else
+                    break;
+            }
+
+            foreach (Site_data TargSite in Target_Data)
+            {
+                if (TargSite.This_Date < Conc_Start)
+                    Targ_Start_ind++;
+                else
+                    break;
+            }
+
+            for (int i = Targ_Start_ind; i < Target_Data.Length; i++)
+            {
+                for (int j = Ref_Start_ind; j < Ref_Data.Length; j++)
+                {
+                    if (Target_Data[i].This_Date == Ref_Data[j].This_Date && Target_Data[i].This_Date <= Conc_End)
+                    {
+                        Conc_count = Conc_count + 1;
+                        Array.Resize(ref Conc_Data_All_ML, Conc_count);
+                        Conc_Data_All_ML[Conc_count - 1] = new Concurrent_data_ML();
+                        Conc_Data_All_ML[Conc_count - 1].This_Date = Target_Data[i].This_Date;
+                        Conc_Data_All_ML[Conc_count - 1].Ref_WS = Ref_Data[j].This_WS;
+                        Conc_Data_All_ML[Conc_count - 1].Ref_WD = Ref_Data[j].This_WD;
+                        Conc_Data_All_ML[Conc_count - 1].Target_WS = Target_Data[i].This_WS;
+                        Conc_Data_All_ML[Conc_count - 1].Target_WD = Target_Data[i].This_WD;
+                        Conc_Data_All_ML[Conc_count - 1].Ref_Temp = Ref_Data[j].This_Temp;
+                        Conc_Data_All_ML[Conc_count - 1].Ref_Pressure = Ref_Data[j].This_Pressure;
+                        break;
+                    }
+
+                }
+                if (Target_Data[i].This_Date >= Conc_End)
+                {
+                    break;
+                }
+            }
+
+            Conc_Data_ML = Conc_Data_All_ML;
+
+            if (Conc_count == 0 && Conc_form == true)
+                MessageBox.Show("There is no concurrent data between the reference and target site for the selected start and end dates.");
+            else
+                Got_Conc = true;
+
         }
 
         ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1819,13 +2192,40 @@ namespace MCP
             return Sector_Count;
         }
 
+
+
+
+        ////////////////////////////////////////////////////////////////////////////////////////////////////
+        /// PN Addition. Creates the classes to be able to input and output the variables to the ML models
+        /// <summary>
+        /// PN Addition.
+        /// </summary>/////////////////////////////////////////////////////////////////////////////////////////////////
+        public class ModelInput
+        {
+            [ColumnName("Label")]
+            public float Target_WS { get; set; }
+
+            public float Ref_WS { get; set; }
+            //public float RefWD { get; set; }
+            public float Ref_Temp { get; set; }
+            public float Ref_Pressure { get; set; }
+            // etc. in case we want more features
+        }
+
+        public class ModelOutput
+        {
+            [ColumnName("Score")]
+            public float PredictedWS { get; set; }
+        }
+
+
         ////////////////////////////////////////////////////////////////////////////////////////////////////
         /// <summary>   Executes the MCP calculation. </summary>
         /// <param name="This_Conc_Start">  this conc start Date/Time. </param>
         /// <param name="This_Conc_End">    this conc end Date/Time. </param>
         /// <param name="Use_All_Data">     True to use all data. </param>
         /// <param name="MCP_Method">   MCP_Method may be "Orth. Regression", "Variance Ratio", "Method of Bins", "Matrix" </param>
-        
+
         /// <returns>   A float. </returns>
         ////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -1842,11 +2242,27 @@ namespace MCP
         /// <returns>   A float. </returns>
         ////////////////////////////////////////////////////////////////////////////////////////////////////
 
+
         public float Do_MCP(DateTime This_Conc_Start, DateTime This_Conc_End, bool Use_All_Data, string MCP_Method)
         {
             // Performs MCP using a linear model (i.e orthogonal regression or variance ratio) or a method of bins or a Matrix method
             // Orth. Reg. minimizes the distance between both the reference and target site wind speeds from the regression line
-            
+
+
+            //defining binEngines variable for Lasso and Ridge use
+            //adding the ML contrext
+            var binEngines = new Dictionary<(int wd, int hr, int tp), PredictionEngine<ModelInput, ModelOutput>>(); //will not use in next iteration
+            var mlContext = new Microsoft.ML.MLContext(seed:42);
+
+            IDataView globalData = mlContext.Data.LoadFromEnumerable(Conc_Data_ML); //will not use in next iteration
+
+            //to later scale the datasets
+            var globalPipeline = mlContext.Transforms
+                .Concatenate("Features", "Ref_WS", "Ref_Temp", "Ref_Pressure")
+                .Append(mlContext.Transforms.NormalizeMeanVariance("Features")); //will not use in next iteration. Will manually standarize the data in the matrix Conc_Data_ML
+
+            var normalizationTransformer = globalPipeline.Fit(globalData); //will not use in next iteration
+
             // Build array of conccurent data for specified dates
             Get_Subset_Conc_Data(This_Conc_Start, This_Conc_End);
 
@@ -2037,7 +2453,376 @@ namespace MCP
                     }           
                            
             }
-                        
+
+            else if (MCP_Method == "Lasso" || MCP_Method == "Ridge")
+            {
+                // 1) Clear and set up the Lin_MCP_MultiFeature structure for Lasso or Ridge.
+                //    This has been written previously
+                //    public Lin_MCP_MultiFeature Lasso = new Lin_MCP_MultiFeature();
+                //    public Lin_MCP_MultiFeature Ridge = new Lin_MCP_MultiFeature();
+
+                if (MCP_Method == "Lasso")
+                {
+                    Lasso.Clear();
+                }
+                else
+                {
+                    Ridge.Clear();
+                }
+
+                if (MCP_Method == "Lasso") Array.Resize(ref Lasso.LT_WS_Est, Ref_Data.Length);
+                if (MCP_Method == "Ridge")Array.Resize(ref Ridge.LT_WS_Est, Ref_Data.Length);
+
+                //2)Prepare dimension sizes
+                //Adjust NumFeats in the future if more are added (changed to three after wd changes)
+                int NumFeats = 3;
+
+                // 3)Dimension arrays to hold coefficients, intercepts, and R² for each bin
+                if (MCP_Method == "Lasso")
+                {
+                    Lasso.Weights = new float[Num_WD, Num_Hour, Num_Temp, NumFeats];
+                    Lasso.Intercept = new float[Num_WD, Num_Hour, Num_Temp];
+                    Lasso.R_sq = new float[Num_WD, Num_Hour, Num_Temp];
+                }
+                else 
+                {
+                    Ridge.Weights = new float[Num_WD, Num_Hour, Num_Temp, NumFeats];
+                    Ridge.Intercept = new float[Num_WD, Num_Hour, Num_Temp];
+                    Ridge.R_sq = new float[Num_WD, Num_Hour, Num_Temp];
+                }
+
+                //Setting a dictionary to save model for each bin
+                //Moving it to a higher scope for running purposes
+                //var binEngines = new Dictionary<(int wd, int hr, int tp), PredictionEngine<ModelInput, ModelOutput>>();
+
+
+                //4)Train one model for each (WD, Hour, Temp) bin
+                for (int wdInd = 0; wdInd < Num_WD; wdInd++)
+                {
+                    for (int hrInd = 0; hrInd < Num_Hour; hrInd++)
+                    {
+                        for (int tpInd = 0; tpInd < Num_Temp; tpInd++)
+                        {
+                            //Collect training data for the current bin
+                            List<ModelInput> trainingSamples = new List<ModelInput>();
+
+                            foreach (var c in Conc_Data_ML)
+                            {
+                                int thisWD = Get_WD_ind(c.Ref_WD, Num_WD);
+                                int thisHour = Get_Hourly_Index(c.This_Date.Hour);
+                                int thisTemp = Get_Temp_ind(thisWD, thisHour, c.Ref_Temp);
+
+                                // Only use data belonging to (wdInd, hrInd, tpInd)
+                                if (thisWD == wdInd && thisHour == hrInd && thisTemp == tpInd)
+                                {
+                                    // Each item is mapped to ModelInput
+                                    trainingSamples.Add(new ModelInput
+                                    {
+                                        Target_WS = c.Target_WS,
+                                        Ref_WS = c.Ref_WS,
+                                        //RefWD = c.Ref_WD,
+                                        Ref_Temp = c.Ref_Temp,
+                                        Ref_Pressure = c.Ref_Pressure
+                                    });
+                                }
+                            }
+
+                            // If there are too few samples, assign default 0
+                            if (trainingSamples.Count < 5)
+                            {
+                                if (MCP_Method == "Lasso")
+                                {
+                                    for (int f = 0; f < NumFeats; f++)
+                                    {
+                                        Lasso.Weights[wdInd, hrInd, tpInd, f] = 0f;
+                                    }
+                                    Lasso.Intercept[wdInd, hrInd, tpInd] = 0f;
+                                    Lasso.R_sq[wdInd, hrInd, tpInd] = 0f;
+                                }
+                                else
+                                {
+                                    for (int f = 0; f < NumFeats; f++)
+                                    {
+                                        Ridge.Weights[wdInd, hrInd, tpInd, f] = 0f;
+                                    }
+                                    Ridge.Intercept[wdInd, hrInd, tpInd] = 0f;
+                                    Ridge.R_sq[wdInd, hrInd, tpInd] = 0f;
+                                }
+                                continue;
+                            }
+
+                            //Train the Lasso or Ridge model with ML.NET
+                            
+                            var trainData = mlContext.Data.LoadFromEnumerable(trainingSamples);
+
+                            var concatEstimator = mlContext.Transforms.Concatenate("Features", "Ref_WS", "Ref_Temp", "Ref_Pressure");
+                            var concatTransformer = concatEstimator.Fit(trainData);
+                            IDataView concatenatedData = concatTransformer.Transform(trainData);
+
+                            //Normalize the data
+                            IDataView normalizedData = normalizationTransformer.Transform(concatenatedData);
+
+                            //Specify regularization values for Lasso or Ridge
+                            //!!!!!! This hyperparameters need to be changed once the code is working
+                            //Defined based on the results obtained in the python analysis in Google Colab
+
+                            float l1Val = (MCP_Method == "Lasso") ? 0.1f : 0f;
+                            float l2Val = (MCP_Method == "Ridge") ? 0.001f : 0f;
+
+                            //Create the pipeline: concatenate features, normalize, then train with SGD Non-Calibrated
+                            var modelEstimator = mlContext.Regression.Trainers.Sdca(
+                                labelColumnName: "Label",
+                                featureColumnName: "Features",
+                                l1Regularization: l1Val,
+                                l2Regularization: l2Val
+                            );
+
+                            //Fit the model to the training data
+                            var trainedModel = modelEstimator.Fit(normalizedData);
+
+                            //Save prediction engines for each model
+                            //var engine = mlContext.Model.CreatePredictionEngine<ModelInput, ModelOutput>(trainedModel);
+                            //binEngines[(wdInd, hrInd, tpInd)] = engine;
+
+                            //Extract coefficients and intercept
+                            var linearParams = trainedModel.Model as Microsoft.ML.Trainers.LinearRegressionModelParameters;
+
+
+                            //Final model with normalization and linear regression
+                            var finalModel = new TransformerChain<ITransformer>(normalizationTransformer, trainedModel);
+
+                            //Predict phase
+                            if (MCP_Method == "Lasso")
+                            {
+                                for (int i = 0; i < Ref_Data.Length; i++)
+                                {
+                                    int recWD = Get_WD_ind(Ref_Data[i].This_WD, Get_Num_WD());
+                                    int recHR = Get_Hourly_Index(Ref_Data[i].This_Date.Hour);
+                                    int recTP = Get_Temp_ind(recWD, recHR, Ref_Data[i].This_Temp);
+                                    if (recWD == wdInd && recHR == hrInd && recTP == tpInd)
+                                    {
+                                        //Prepare for prediction
+                                        var input = new ModelInput
+                                        {
+                                            Ref_WS = Ref_Data[i].This_WS,
+                                            Ref_Temp = Ref_Data[i].This_Temp,
+                                            Ref_Pressure = Ref_Data[i].This_Pressure
+                                        };
+
+                                        // Create a prediction engine
+                                        var predEngine = mlContext.Model.CreatePredictionEngine<ModelInput, ModelOutput>(finalModel);
+                                        var output = predEngine.Predict(input);
+
+                                        //Update
+                                        Lasso.LT_WS_Est[i].This_Date = Ref_Data[i].This_Date;
+                                        Lasso.LT_WS_Est[i].This_WD = Ref_Data[i].This_WD;
+                                        Lasso.LT_WS_Est[i].This_WS = output.PredictedWS;
+                                    }
+                                }
+                            }
+                            else if (MCP_Method == "Ridge")
+                            {
+                                for (int i = 0; i < Ref_Data.Length; i++)
+                                {
+                                    int recWD = Get_WD_ind(Ref_Data[i].This_WD, Get_Num_WD());
+                                    int recHR = Get_Hourly_Index(Ref_Data[i].This_Date.Hour);
+                                    int recTP = Get_Temp_ind(recWD, recHR, Ref_Data[i].This_Temp);
+                                    if (recWD == wdInd && recHR == hrInd && recTP == tpInd)
+                                    {
+                                        // Prepara el input de predicción
+                                        var input = new ModelInput
+                                        {
+                                            Ref_WS = Ref_Data[i].This_WS,
+                                            Ref_Temp = Ref_Data[i].This_Temp,
+                                            Ref_Pressure = Ref_Data[i].This_Pressure
+                                        };
+
+                                        // Crea un PredictionEngine temporal para este modelo
+                                        var predEngine = mlContext.Model.CreatePredictionEngine<ModelInput, ModelOutput>(finalModel);
+                                        var output = predEngine.Predict(input);
+
+                                        // Actualiza el vector global de salida
+                                        Ridge.LT_WS_Est[i].This_Date = Ref_Data[i].This_Date;
+                                        Ridge.LT_WS_Est[i].This_WD = Ref_Data[i].This_WD;
+                                        Ridge.LT_WS_Est[i].This_WS = output.PredictedWS;
+                                    }
+                                }
+
+
+                            }
+
+                            /*
+                            if (linearParams != null)
+                            {
+                                var w = linearParams.Weights.ToArray();
+                                float b = linearParams.Bias;
+
+                                if (MCP_Method == "Lasso")
+                                {
+                                    for (int f = 0; f < NumFeats; f++)
+                                    {
+                                        Lasso.Weights[wdInd, hrInd, tpInd, f] = w[f];
+                                    }
+                                    Lasso.Intercept[wdInd, hrInd, tpInd] = b;
+                                }
+                                else
+                                {
+                                    for (int f = 0; f < NumFeats; f++)
+                                    {
+                                        Ridge.Weights[wdInd, hrInd, tpInd, f] = w[f];
+                                    }
+                                    Ridge.Intercept[wdInd, hrInd, tpInd] = b;
+                                }
+
+                                // Evaluate R² on the training subset
+                                var predictions = trainedModel.Transform(trainData);
+                                var metrics = mlContext.Regression.Evaluate(predictions, labelColumnName: "Label");
+
+                                if (MCP_Method == "Lasso")
+                                {
+                                    Lasso.R_sq[wdInd, hrInd, tpInd] = (float)metrics.RSquared;
+
+                                }
+                                else
+                                {
+                                    Ridge.R_sq[wdInd, hrInd, tpInd] = (float)metrics.RSquared;
+                                }
+                            }*/
+                        }
+                    }
+                }
+
+                /*
+                // Train a single "global" model for All_Weights, All_Intercept, All_R_sq
+                List<ModelInput> globalSamples = new List<ModelInput>();
+                foreach (var c in Conc_Data_ML)
+                {
+                    globalSamples.Add(new ModelInput
+                    {
+                        TargetWS = c.Target_WS,
+                        RefWS = c.Ref_WS,
+                        RefWD = c.Ref_WD,
+                        RefTemp = c.Ref_Temp,
+                        RefPress = c.Ref_Pressure
+                    });
+                }
+
+                if (globalSamples.Count > 5)
+                {
+                    var mlContextGlobal = new Microsoft.ML.MLContext();
+                    var trainDataGlobal = mlContextGlobal.Data.LoadFromEnumerable(globalSamples);
+
+                    float l1Val = (MCP_Method == "Lasso") ? 0.1f : 0f;
+                    float l2Val = (MCP_Method == "Ridge") ? 0.1f : 0f;
+
+                    var pipelineGlobal = mlContextGlobal.Transforms
+                        .Concatenate("Features", "RefWS", "RefWD", "RefTemp", "RefPress")
+                        .Append(mlContextGlobal.Transforms.NormalizeMeanVariance("Features"))
+                        .Append(mlContextGlobal.Regression.Trainers.Sdca(
+                            labelColumnName: "TargetWS",
+                            featureColumnName: "Features",
+                            l1Regularization: l1Val,
+                            l2Regularization: l2Val
+                        ));
+
+                    var modelGlobal = pipelineGlobal.Fit(trainDataGlobal);
+                    var paramGlobal = modelGlobal.LastTransformer.Model
+                                      as Microsoft.ML.Trainers.LinearRegressionModelParameters;
+
+                    var predictionsGlobal = modelGlobal.Transform(trainDataGlobal);
+                    var metricsGlobal = mlContextGlobal.Regression.Evaluate(predictionsGlobal, labelColumnName: "");
+
+                    if (paramGlobal != null)
+                    {
+                        var wG = paramGlobal.Weights.ToArray();
+                        float bG = paramGlobal.Bias;
+                        float r2G = (float)metricsGlobal.RSquared;
+
+                        if (MCP_Method == "Lasso")
+                        {
+                            Lasso.All_Weights = wG;
+                            Lasso.All_Intercept = bG;
+                            Lasso.All_R_sq = r2G;
+                        }
+                        else
+                        {
+                            Ridge.All_Weights = wG;
+                            Ridge.All_Intercept = bG;
+                            Ridge.All_R_sq = r2G;
+                        }
+                    }
+
+                    //Create a PredictionEngine to estimate the entire Ref_Data series
+                    var predEngineGlobal = mlContextGlobal.Model.CreatePredictionEngine<ModelInput, ModelOutput>(modelGlobal);
+
+                    if (MCP_Method == "Lasso")
+                    {
+                        Array.Resize(ref Lasso.LT_WS_Est, Ref_Data.Length);
+                        for (int i = 0; i < Ref_Data.Length; i++)
+                        {
+                            var input = new ModelInput
+                            {
+                                RefWS = Ref_Data[i].This_WS,
+                                RefWD = Ref_Data[i].This_WD,
+                                RefTemp = Ref_Data[i].This_Temp,
+                                RefPress = Ref_Data[i].This_Pressure
+                            };
+
+                            var predicted = predEngineGlobal.Predict(input);
+
+                            Lasso.LT_WS_Est[i].This_Date = Ref_Data[i].This_Date;
+                            Lasso.LT_WS_Est[i].This_WD = Ref_Data[i].This_WD;
+                            Lasso.LT_WS_Est[i].This_WS = predicted.PredictedWS;
+                        }
+                    }
+                    else // "Ridge"
+                    {
+                        Array.Resize(ref Ridge.LT_WS_Est, Ref_Data.Length);
+                        for (int i = 0; i < Ref_Data.Length; i++)
+                        {
+                            var input = new ModelInput
+                            {
+                                RefWS = Ref_Data[i].This_WS,
+                                RefWD = Ref_Data[i].This_WD,
+                                RefTemp = Ref_Data[i].This_Temp,
+                                RefPress = Ref_Data[i].This_Pressure
+                            };
+
+                            var predicted = predEngineGlobal.Predict(input);
+
+                            Ridge.LT_WS_Est[i].This_Date = Ref_Data[i].This_Date;
+                            Ridge.LT_WS_Est[i].This_WD = Ref_Data[i].This_WD;
+                            Ridge.LT_WS_Est[i].This_WS = predicted.PredictedWS;
+                        }
+                    }
+                }
+                */
+
+                //Uncertainty
+                /*
+                if (!Use_All_Data)
+                {
+                    float avgEst = 0f;
+                    if (MCP_Method == "Lasso")
+                    {
+                        avgEst = Stat.Calc_Avg_WS(
+                            Lasso.LT_WS_Est, 0, 10000, Ref_Start, Ref_End,
+                            0, 360, true, 0, true, 0, this
+                        );
+                    }
+                    else
+                    {
+                        avgEst = Stat.Calc_Avg_WS(
+                            Ridge.LT_WS_Est, 0, 10000, Ref_Start, Ref_End,
+                            0, 360, true, 0, true, 0, this
+                        );
+                    }
+
+                    return avgEst;
+                }
+                */
+            }
+
             if (Use_All_Data == false && MCP_Method != "Method of Bins" && MCP_Method != "Matrix") // if conducting uncertainty analysis (with a linear model) then return the LT value
                 return LT_WS_Est;                       
             
@@ -2046,14 +2831,16 @@ namespace MCP
             if (MCP_Method == "Variance Ratio") Array.Resize(ref MCP_Varrat.LT_WS_Est, Ref_Data.Length);
             if (MCP_Method == "Method of Bins") Array.Resize(ref These_Bins.LT_WS_Est, Ref_Data.Length);
             if (MCP_Method == "Matrix") Array.Resize(ref This_Matrix.LT_WS_Est, Ref_Data.Length);
+            //if (MCP_Method == "Lasso") Array.Resize(ref Lasso.LT_WS_Est, Ref_Data.Length);
+            //if (MCP_Method == "Ridge") Array.Resize(ref Ridge.LT_WS_Est, Ref_Data.Length);
 
             Random This_Rand = Get_Random_Number();
             float Last_WS = 0;
-                        
+
             for (int i = 0; i < Ref_Data.Length; i++)
             {
                 int This_WD_ind = Get_WD_ind(Ref_Data[i].This_WD, Get_Num_WD());
-                int WS_ind = Get_WS_ind(Ref_Data[i].This_WS, WS_bin); 
+                int WS_ind = Get_WS_ind(Ref_Data[i].This_WS, WS_bin);
 
                 int This_Hour_ind = Get_Hourly_Index(Ref_Data[i].This_Date.Hour);
                 int This_Temp_ind = Get_Temp_ind(This_WD_ind, This_Hour_ind, Ref_Data[i].This_Temp);
@@ -2131,8 +2918,8 @@ namespace MCP
                 else if (MCP_Method == "Matrix")
                 {
                     This_Matrix.LT_WS_Est[i].This_Date = Ref_Data[i].This_Date;
-                    CDF_Obj WS_CDF = new CDF_Obj();                    
-                                        
+                    CDF_Obj WS_CDF = new CDF_Obj();
+
                     // find PDF defined for this WD, hourly and temp bin
                     foreach (CDF_Obj This_CDF in This_Matrix.WS_CDFs)
                     {
@@ -2141,13 +2928,13 @@ namespace MCP
                             WS_CDF = This_CDF;
                             break;
                         }
-                    }                                      
+                    }
 
                     CDF_Obj Combo_CDF = new CDF_Obj(); // combination of WS PDF and Last WS PDF
 
                     if ((Last_WS != 0) && (WS_CDF.Count > 1) && (LastWS_Wgt > 0))
                     {
-                        
+
                         float[] Last_WS_CDF = Get_Lag_WS_CDF(Last_WS, WS_CDF.Min_WS, WS_CDF.WS_interval);
 
                         Combo_CDF.CDF = new float[100];
@@ -2158,31 +2945,127 @@ namespace MCP
                         // combine WS_CDF with Last_WS_CDF
                         for (int j = 0; j < 100; j++)
                             if (WS_CDF.CDF[j] != 0)
-                                Combo_CDF.CDF[j] = (Matrix_Wgt * WS_CDF.CDF[j] + (Last_WS_CDF[j] * LastWS_Wgt)) / (LastWS_Wgt + Matrix_Wgt);                                                                          
+                                Combo_CDF.CDF[j] = (Matrix_Wgt * WS_CDF.CDF[j] + (Last_WS_CDF[j] * LastWS_Wgt)) / (LastWS_Wgt + Matrix_Wgt);
 
                     }
                     else
                         Combo_CDF = WS_CDF;
-                                                          
-                    
+
+
                     if (Combo_CDF.Count > 1)
-                    {                   
+                    {
                         // Generate random number from 0 to 1 and find index in CDF                        
                         float Rand_Num = (float)This_Rand.NextDouble();
-                        int Min_ind = Find_CDF_Index(Combo_CDF, Rand_Num);                        
+                        int Min_ind = Find_CDF_Index(Combo_CDF, Rand_Num);
                         This_Matrix.LT_WS_Est[i].This_WS = Combo_CDF.Min_WS + Combo_CDF.WS_interval * Min_ind;
-                    }                    
+                    }
                     else
                     {
                         This_Matrix.LT_WS_Est[i].This_WS = Combo_CDF.Min_WS; // no data for this WS bin so use same WS as reference
-                        
+
                     }
 
-                    This_Matrix.LT_WS_Est[i].This_WD = Ref_Data[i].This_WD;                                    
-                    Last_WS = This_Matrix.LT_WS_Est[i].This_WS;                                        
+                    This_Matrix.LT_WS_Est[i].This_WD = Ref_Data[i].This_WD;
+                    Last_WS = This_Matrix.LT_WS_Est[i].This_WS;
                 }
-                
+
+
+                /*
+                else if (MCP_Method == "Lasso" || MCP_Method == "Ridge")
+                {
+                    // Determine bin indices for the current record
+                    This_WD_ind = Get_WD_ind(Ref_Data[i].This_WD, Get_Num_WD());
+                    This_Hour_ind = Get_Hourly_Index(Ref_Data[i].This_Date.Hour);
+                    This_Temp_ind = Get_Temp_ind(This_WD_ind, This_Hour_ind, Ref_Data[i].This_Temp);
+
+                    // Look up the PredictionEngine for this bin
+                    var key = (This_WD_ind, This_Hour_ind, This_Temp_ind);
+                    if (binEngines.ContainsKey(key))
+                    {
+                        var engine = binEngines[key];
+                        var input = new ModelInput
+                        {
+                            RefWS = Ref_Data[i].This_WS,
+                            //RefWD = Ref_Data[i].This_WD,
+                            RefTemp = Ref_Data[i].This_Temp,
+                            RefPress = Ref_Data[i].This_Pressure
+                        };
+                        var output = engine.Predict(input);
+
+                        //Assign the prediction to LT_WS_Est
+                        Lasso.LT_WS_Est[i].This_Date = Ref_Data[i].This_Date;
+                        Lasso.LT_WS_Est[i].This_WD = Ref_Data[i].This_WD;
+                        Lasso.LT_WS_Est[i].This_WS = output.PredictedWS;
+                    }
+                    else
+                    {
+                        //Fallback: assign the reference wind speed if no engine is found
+                        Lasso.LT_WS_Est[i].This_Date = Ref_Data[i].This_Date;
+                        Lasso.LT_WS_Est[i].This_WD = Ref_Data[i].This_WD;
+                        Lasso.LT_WS_Est[i].This_WS = Ref_Data[i].This_WS;
+                    }
+                }
+                */
+
+
+
+
+                //This part of the code is commentated because it will require a previous normalization
+                //Instead, a prediction engine was created to avoid doing it manually. 
+                // Keeping the code here for the moment, in case it needs to be used lately.
+
+
+
+                //else if (MCP_Method == "Lasso" || MCP_Method == "Ridge")
+                //{
+
+
+                //    float predicted = 0;
+                //    float intercept = 0;
+                //    if (MCP_Method == "Lasso")
+                //    {
+                //        intercept = Lasso.Intercept[This_WD_ind, This_Hour_ind, This_Temp_ind];
+                //        float WRefWS = Lasso.Weights[This_WD_ind, This_Hour_ind, This_Temp_ind, 0];
+                //        float WRefWD = Lasso.Weights[This_WD_ind, This_Hour_ind, This_Temp_ind, 1];
+                //        float WRefTemp = Lasso.Weights[This_WD_ind, This_Hour_ind, This_Temp_ind, 2];
+                //        float WRefPres = Lasso.Weights[This_WD_ind, This_Hour_ind, This_Temp_ind, 3];
+
+                //        predicted = intercept
+                //                  + Ref_Data[i].This_WS * WRefWS
+                //                  + Ref_Data[i].This_WD * WRefWD
+                //                  + Ref_Data[i].This_Temp * WRefTemp
+                //                  + Ref_Data[i].This_Pressure * WRefPres;
+
+                //        //
+                //        if (predicted < 0) predicted = 0;
+
+                //        Lasso.LT_WS_Est[i].This_Date = Ref_Data[i].This_Date;
+                //        Lasso.LT_WS_Est[i].This_WD = Ref_Data[i].This_WD;
+                //        Lasso.LT_WS_Est[i].This_WS = predicted;
+                //    }
+                //    else // 
+                //    {
+                //        intercept = Ridge.Intercept[This_WD_ind, This_Hour_ind, This_Temp_ind];
+                //        float WRefWS = Ridge.Weights[This_WD_ind, This_Hour_ind, This_Temp_ind, 0];
+                //        float WRefWD = Ridge.Weights[This_WD_ind, This_Hour_ind, This_Temp_ind, 1];
+                //        float WRefTemp = Ridge.Weights[This_WD_ind, This_Hour_ind, This_Temp_ind, 2];
+                //        float WRefPres = Ridge.Weights[This_WD_ind, This_Hour_ind, This_Temp_ind, 3];
+
+                //        predicted = intercept
+                //                  + Ref_Data[i].This_WS * WRefWS
+                //                  + Ref_Data[i].This_WD * WRefWD
+                //                  + Ref_Data[i].This_Temp * WRefTemp
+                //                  + Ref_Data[i].This_Pressure * WRefPres;
+
+                //        if (predicted < 0) predicted = 0;
+
+                //        Ridge.LT_WS_Est[i].This_Date = Ref_Data[i].This_Date;
+                //        Ridge.LT_WS_Est[i].This_WD = Ref_Data[i].This_WD;
+                //        Ridge.LT_WS_Est[i].This_WS = predicted;
+                //    }
+                //}
             }
+
 
             if (MCP_Method == "Method of Bins" && Use_All_Data == true)
                 MCP_Bins = These_Bins;
@@ -2196,8 +3079,8 @@ namespace MCP
                    
             if (Use_All_Data == true)
             {
-                Update_plot();
-                Update_Bin_List();
+                //Update_plot();
+                //Update_Bin_List();
                 Update_Run_Buttons();
                 Update_Text_boxes();
                 Update_Export_buttons();
@@ -2893,7 +3776,8 @@ namespace MCP
         public void Update_Export_buttons()
         {             
             if ((Get_MCP_Method() == "Orth. Regression" && MCP_Ortho.LT_WS_Est != null) || (Get_MCP_Method() == "Method of Bins" && MCP_Bins.LT_WS_Est != null) 
-                || (Get_MCP_Method() == "Variance Ratio" && MCP_Varrat.LT_WS_Est != null) || (Get_MCP_Method() == "Matrix" && MCP_Matrix.LT_WS_Est != null))
+                || (Get_MCP_Method() == "Variance Ratio" && MCP_Varrat.LT_WS_Est != null) || (Get_MCP_Method() == "Matrix" && MCP_Matrix.LT_WS_Est != null)
+                || (Get_MCP_Method() == "Lasso" && Lasso.LT_WS_Est != null) || (Get_MCP_Method() == "Ridge" && Ridge.LT_WS_Est != null))
             {
                 btnExportTS.Enabled = true;
                 btnExportTAB.Enabled = true;
@@ -2914,7 +3798,9 @@ namespace MCP
             if ((Get_MCP_Method() == "Orth. Regression" && Uncert_Ortho.Length > 0) || 
                 (Get_MCP_Method() == "Method of Bins" && Uncert_Bins.Length > 0) || 
                 (Get_MCP_Method() == "Variance Ratio" && Uncert_Varrat.Length > 0) ||
-                (Get_MCP_Method() == "Matrix" && Uncert_Matrix.Length > 0))
+                (Get_MCP_Method() == "Matrix" && Uncert_Matrix.Length > 0) ||
+                (Get_MCP_Method() == "Lasso" && Uncert_Matrix.Length > 0) ||
+                (Get_MCP_Method() == "Ridge" && Uncert_Matrix.Length > 0))
                 btnExportMultitest.Enabled = true;
             else
                 btnExportMultitest.Enabled = false;
@@ -3337,6 +4223,7 @@ namespace MCP
             string MCP_method = Get_MCP_Method();
                         
             Find_Concurrent_Data(true, Conc_Start, Conc_End);
+            Find_Concurrent_Data_ML(true, Conc_Start, Conc_End);
             Find_Sector_Counts();
 
             Do_MCP(Conc_Start, Conc_End, true, MCP_method);                              
@@ -3605,6 +4492,36 @@ namespace MCP
                     else if (Get_MCP_Method() == "Matrix" && MCP_Matrix.LT_WS_Est != null)
                     {
                         foreach (Site_data LT_WS_WD in MCP_Matrix.LT_WS_Est)
+                        {
+                            if (LT_WS_WD.This_Date >= Export_Start && LT_WS_WD.This_Date <= Export_End)
+                            {
+                                file.Write(LT_WS_WD.This_Date);
+                                file.Write(",");
+                                file.Write(Math.Round(LT_WS_WD.This_WS, 3));
+                                file.Write(",");
+                                file.Write(Math.Round(LT_WS_WD.This_WD, 2));
+                                file.WriteLine();
+                            }
+                        }
+                    }
+                    else if (Get_MCP_Method() == "Lasso" && Lasso.LT_WS_Est != null)
+                    {
+                        foreach (Site_data LT_WS_WD in Lasso.LT_WS_Est)
+                        {
+                            if (LT_WS_WD.This_Date >= Export_Start && LT_WS_WD.This_Date <= Export_End)
+                            {
+                                file.Write(LT_WS_WD.This_Date);
+                                file.Write(",");
+                                file.Write(Math.Round(LT_WS_WD.This_WS, 3));
+                                file.Write(",");
+                                file.Write(Math.Round(LT_WS_WD.This_WD, 2));
+                                file.WriteLine();
+                            }
+                        }
+                    }
+                    else if (Get_MCP_Method() == "Ridge" && Ridge.LT_WS_Est != null)
+                    {
+                        foreach (Site_data LT_WS_WD in Ridge.LT_WS_Est)
                         {
                             if (LT_WS_WD.This_Date >= Export_Start && LT_WS_WD.This_Date <= Export_End)
                             {
