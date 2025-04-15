@@ -243,7 +243,8 @@
             "Variance Ratio",
             "Matrix",
             "Ridge",
-            "Lasso"});
+            "Lasso",
+            "LightGBM"});
             this.cboMCP_Type.Location = new System.Drawing.Point(40, 508);
             this.cboMCP_Type.Margin = new System.Windows.Forms.Padding(8, 7, 8, 7);
             this.cboMCP_Type.Name = "cboMCP_Type";
