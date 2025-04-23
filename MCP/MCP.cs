@@ -2492,14 +2492,32 @@ namespace MCP
                                     nameof(ModelInput.RefWD),
                                     nameof(ModelInput.Ref_Temp),
                                     nameof(ModelInput.Ref_Pressure))
-                .Append(mlContext.Regression.Trainers.LightGbm(new LightGbmRegressionTrainer.Options
-                {
-                    LabelColumnName = "Label",
-                    FeatureColumnName = "Features",
-                    NumberOfIterations = 80,     // Equivalent to num_round_boost in Python
-                    LearningRate = 0.05,
-                    NumberOfLeaves = 20,
-                }));
+                .Append(
+    mlContext.Regression.Trainers.LightGbm(
+        new LightGbmRegressionTrainer.Options
+        {
+            // ───────── column settings ─────────
+            LabelColumnName = "Label",      // target variable
+            FeatureColumnName = "Features",   // vector created by Concatenate()
+
+            // ───────── model capacity ─────────
+            NumberOfIterations = 400,          // more boosting rounds
+            LearningRate = 0.03,         // smaller step per tree
+            NumberOfLeaves = 63,           // bigger trees -> more detail
+
+            // ───────── finer splits ───────────
+            MaximumBinCountPerFeature = 511,         // larger histograms for real-valued features
+
+            // ───────── tree shape ─────────────
+            Booster = new GradientBooster.Options
+            {
+                MaximumTreeDepth = -1               // -1 = no depth limit
+            }
+
+            // ───────── custom objective ───────
+            // ML.NET 4.x lets you push raw LightGBM parameters via AdvancedSettings
+            
+        }));
                 Console.WriteLine("Training LightGBM...");
                 Stopwatch stopwatch = Stopwatch.StartNew();
                 var model = pipeline.Fit(trainingDataView);
