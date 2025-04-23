@@ -242,8 +242,6 @@
             "Method of Bins",
             "Variance Ratio",
             "Matrix",
-            "Ridge",
-            "Lasso",
             "LightGBM"});
             this.cboMCP_Type.Location = new System.Drawing.Point(40, 508);
             this.cboMCP_Type.Margin = new System.Windows.Forms.Padding(8, 7, 8, 7);

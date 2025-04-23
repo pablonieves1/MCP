@@ -192,8 +192,6 @@ namespace MCP
         public Matrix_Obj MCP_Matrix = new Matrix_Obj();
 
         //PN addition, creating this classes in order to be able to use the with the ML models
-        public Lin_MCP_MultiFeature Lasso = new Lin_MCP_MultiFeature();
-        public Lin_MCP_MultiFeature Ridge = new Lin_MCP_MultiFeature();
         public Lin_MCP_MultiFeature LightGBM = new Lin_MCP_MultiFeature();
 
 
@@ -2253,21 +2251,7 @@ namespace MCP
             // Orth. Reg. minimizes the distance between both the reference and target site wind speeds from the regression line
 
 
-            //defining binEngines variable for Lasso and Ridge use
-            //adding the ML contrext
-            //var binEngines = new Dictionary<(int wd, int hr, int tp), PredictionEngine<ModelInput, ModelOutput>>(); //will not use in next iteration
-            //var mlContext = new Microsoft.ML.MLContext(seed:42);
-
-            //IDataView globalData = mlContext.Data.LoadFromEnumerable(Conc_Data_ML); //will not use in next iteration
-
-            //to later scale the datasets
-            //var globalPipeline = mlContext.Transforms
-            //    .Concatenate("Features", "Ref_WS", "Ref_Temp", "Ref_Pressure")
-            //    .Append(mlContext.Transforms.NormalizeMeanVariance("Features")); //will not use in next iteration. Will manually standarize the data in the matrix Conc_Data_ML
-
-            //var normalizationTransformer = globalPipeline.Fit(globalData); //will not use in next iteration
-
-            // Build array of conccurent data for specified dates
+            
             Get_Subset_Conc_Data(This_Conc_Start, This_Conc_End);
 
             // Calculate the regression for each WD and overall
@@ -2513,9 +2497,6 @@ namespace MCP
             {
                 MaximumTreeDepth = -1               // -1 = no depth limit
             }
-
-            // ───────── custom objective ───────
-            // ML.NET 4.x lets you push raw LightGBM parameters via AdvancedSettings
             
         }));
                 Console.WriteLine("Training LightGBM...");
@@ -2549,374 +2530,7 @@ namespace MCP
 
 
             }
-                //else if (MCP_Method == "Lasso" || MCP_Method == "Ridge")
-                //{
-                //    // 1) Clear and set up the Lin_MCP_MultiFeature structure for Lasso or Ridge.
-                //    //    This has been written previously
-                //    //    public Lin_MCP_MultiFeature Lasso = new Lin_MCP_MultiFeature();
-                //    //    public Lin_MCP_MultiFeature Ridge = new Lin_MCP_MultiFeature();
-
-                //    if (MCP_Method == "Lasso")
-                //    {
-                //        Lasso.Clear();
-                //    }
-                //    else
-                //    {
-                //        Ridge.Clear();
-                //    }
-
-                //    if (MCP_Method == "Lasso") Array.Resize(ref Lasso.LT_WS_Est, Ref_Data.Length);
-                //    if (MCP_Method == "Ridge")Array.Resize(ref Ridge.LT_WS_Est, Ref_Data.Length);
-
-                //    //2)Prepare dimension sizes
-                //    //Adjust NumFeats in the future if more are added (changed to three after wd changes)
-                //    int NumFeats = 3;
-
-                //    // 3)Dimension arrays to hold coefficients, intercepts, and R² for each bin
-                //    if (MCP_Method == "Lasso")
-                //    {
-                //        Lasso.Weights = new float[Num_WD, Num_Hour, Num_Temp, NumFeats];
-                //        Lasso.Intercept = new float[Num_WD, Num_Hour, Num_Temp];
-                //        Lasso.R_sq = new float[Num_WD, Num_Hour, Num_Temp];
-                //    }
-                //    else 
-                //    {
-                //        Ridge.Weights = new float[Num_WD, Num_Hour, Num_Temp, NumFeats];
-                //        Ridge.Intercept = new float[Num_WD, Num_Hour, Num_Temp];
-                //        Ridge.R_sq = new float[Num_WD, Num_Hour, Num_Temp];
-                //    }
-
-                //    //Setting a dictionary to save model for each bin
-                //    //Moving it to a higher scope for running purposes
-                //    //var binEngines = new Dictionary<(int wd, int hr, int tp), PredictionEngine<ModelInput, ModelOutput>>();
-
-
-                //    //4)Train one model for each (WD, Hour, Temp) bin
-                //    for (int wdInd = 0; wdInd < Num_WD; wdInd++)
-                //    {
-                //        for (int hrInd = 0; hrInd < Num_Hour; hrInd++)
-                //        {
-                //            for (int tpInd = 0; tpInd < Num_Temp; tpInd++)
-                //            {
-                //                //Collect training data for the current bin
-                //                List<ModelInput> trainingSamples = new List<ModelInput>();
-
-                //                foreach (var c in Conc_Data_ML)
-                //                {
-                //                    int thisWD = Get_WD_ind(c.Ref_WD, Num_WD);
-                //                    int thisHour = Get_Hourly_Index(c.This_Date.Hour);
-                //                    int thisTemp = Get_Temp_ind(thisWD, thisHour, c.Ref_Temp);
-
-                //                    // Only use data belonging to (wdInd, hrInd, tpInd)
-                //                    if (thisWD == wdInd && thisHour == hrInd && thisTemp == tpInd)
-                //                    {
-                //                        // Each item is mapped to ModelInput
-                //                        trainingSamples.Add(new ModelInput
-                //                        {
-                //                            Target_WS = c.Target_WS,
-                //                            Ref_WS = c.Ref_WS,
-                //                            //RefWD = c.Ref_WD,
-                //                            Ref_Temp = c.Ref_Temp,
-                //                            Ref_Pressure = c.Ref_Pressure
-                //                        });
-                //                    }
-                //                }
-
-                //                // If there are too few samples, assign default 0
-                //                if (trainingSamples.Count < 5)
-                //                {
-                //                    if (MCP_Method == "Lasso")
-                //                    {
-                //                        for (int f = 0; f < NumFeats; f++)
-                //                        {
-                //                            Lasso.Weights[wdInd, hrInd, tpInd, f] = 0f;
-                //                        }
-                //                        Lasso.Intercept[wdInd, hrInd, tpInd] = 0f;
-                //                        Lasso.R_sq[wdInd, hrInd, tpInd] = 0f;
-                //                    }
-                //                    else
-                //                    {
-                //                        for (int f = 0; f < NumFeats; f++)
-                //                        {
-                //                            Ridge.Weights[wdInd, hrInd, tpInd, f] = 0f;
-                //                        }
-                //                        Ridge.Intercept[wdInd, hrInd, tpInd] = 0f;
-                //                        Ridge.R_sq[wdInd, hrInd, tpInd] = 0f;
-                //                    }
-                //                    continue;
-                //                }
-
-                //                //Train the Lasso or Ridge model with ML.NET
-
-                //                var trainData = mlContext.Data.LoadFromEnumerable(trainingSamples);
-
-                //                var concatEstimator = mlContext.Transforms.Concatenate("Features", "Ref_WS", "Ref_Temp", "Ref_Pressure");
-                //                var concatTransformer = concatEstimator.Fit(trainData);
-                //                IDataView concatenatedData = concatTransformer.Transform(trainData);
-
-                //                //Normalize the data
-                //                IDataView normalizedData = normalizationTransformer.Transform(concatenatedData);
-
-                //                //Specify regularization values for Lasso or Ridge
-                //                //!!!!!! This hyperparameters need to be changed once the code is working
-                //                //Defined based on the results obtained in the python analysis in Google Colab
-
-                //                float l1Val = (MCP_Method == "Lasso") ? 0.1f : 0f;
-                //                float l2Val = (MCP_Method == "Ridge") ? 0.001f : 0f;
-
-                //                //Create the pipeline: concatenate features, normalize, then train with SGD Non-Calibrated
-                //                var modelEstimator = mlContext.Regression.Trainers.Sdca(
-                //                    labelColumnName: "Label",
-                //                    featureColumnName: "Features",
-                //                    l1Regularization: l1Val,
-                //                    l2Regularization: l2Val
-                //                );
-
-                //                //Fit the model to the training data
-                //                var trainedModel = modelEstimator.Fit(normalizedData);
-
-                //                //Save prediction engines for each model
-                //                //var engine = mlContext.Model.CreatePredictionEngine<ModelInput, ModelOutput>(trainedModel);
-                //                //binEngines[(wdInd, hrInd, tpInd)] = engine;
-
-                //                //Extract coefficients and intercept
-                //                var linearParams = trainedModel.Model as Microsoft.ML.Trainers.LinearRegressionModelParameters;
-
-
-                //                //Final model with normalization and linear regression
-                //                var finalModel = new TransformerChain<ITransformer>(normalizationTransformer, trainedModel);
-
-                //                //Predict phase
-                //                if (MCP_Method == "Lasso")
-                //                {
-                //                    for (int i = 0; i < Ref_Data.Length; i++)
-                //                    {
-                //                        int recWD = Get_WD_ind(Ref_Data[i].This_WD, Get_Num_WD());
-                //                        int recHR = Get_Hourly_Index(Ref_Data[i].This_Date.Hour);
-                //                        int recTP = Get_Temp_ind(recWD, recHR, Ref_Data[i].This_Temp);
-                //                        if (recWD == wdInd && recHR == hrInd && recTP == tpInd)
-                //                        {
-                //                            //Prepare for prediction
-                //                            var input = new ModelInput
-                //                            {
-                //                                Ref_WS = Ref_Data[i].This_WS,
-                //                                Ref_Temp = Ref_Data[i].This_Temp,
-                //                                Ref_Pressure = Ref_Data[i].This_Pressure
-                //                            };
-
-                //                            // Create a prediction engine
-                //                            var predEngine = mlContext.Model.CreatePredictionEngine<ModelInput, ModelOutput>(finalModel);
-                //                            var output = predEngine.Predict(input);
-
-                //                            //Update
-                //                            Lasso.LT_WS_Est[i].This_Date = Ref_Data[i].This_Date;
-                //                            Lasso.LT_WS_Est[i].This_WD = Ref_Data[i].This_WD;
-                //                            Lasso.LT_WS_Est[i].This_WS = output.PredictedWS;
-                //                        }
-                //                    }
-                //                }
-                //                else if (MCP_Method == "Ridge")
-                //                {
-                //                    for (int i = 0; i < Ref_Data.Length; i++)
-                //                    {
-                //                        int recWD = Get_WD_ind(Ref_Data[i].This_WD, Get_Num_WD());
-                //                        int recHR = Get_Hourly_Index(Ref_Data[i].This_Date.Hour);
-                //                        int recTP = Get_Temp_ind(recWD, recHR, Ref_Data[i].This_Temp);
-                //                        if (recWD == wdInd && recHR == hrInd && recTP == tpInd)
-                //                        {
-                //                            // Prepara el input de predicción
-                //                            var input = new ModelInput
-                //                            {
-                //                                Ref_WS = Ref_Data[i].This_WS,
-                //                                Ref_Temp = Ref_Data[i].This_Temp,
-                //                                Ref_Pressure = Ref_Data[i].This_Pressure
-                //                            };
-
-                //                            // Crea un PredictionEngine temporal para este modelo
-                //                            var predEngine = mlContext.Model.CreatePredictionEngine<ModelInput, ModelOutput>(finalModel);
-                //                            var output = predEngine.Predict(input);
-
-                //                            // Actualiza el vector global de salida
-                //                            Ridge.LT_WS_Est[i].This_Date = Ref_Data[i].This_Date;
-                //                            Ridge.LT_WS_Est[i].This_WD = Ref_Data[i].This_WD;
-                //                            Ridge.LT_WS_Est[i].This_WS = output.PredictedWS;
-                //                        }
-                //                    }
-
-
-                //                }
-
-                //                /*
-                //                if (linearParams != null)
-                //                {
-                //                    var w = linearParams.Weights.ToArray();
-                //                    float b = linearParams.Bias;
-
-                //                    if (MCP_Method == "Lasso")
-                //                    {
-                //                        for (int f = 0; f < NumFeats; f++)
-                //                        {
-                //                            Lasso.Weights[wdInd, hrInd, tpInd, f] = w[f];
-                //                        }
-                //                        Lasso.Intercept[wdInd, hrInd, tpInd] = b;
-                //                    }
-                //                    else
-                //                    {
-                //                        for (int f = 0; f < NumFeats; f++)
-                //                        {
-                //                            Ridge.Weights[wdInd, hrInd, tpInd, f] = w[f];
-                //                        }
-                //                        Ridge.Intercept[wdInd, hrInd, tpInd] = b;
-                //                    }
-
-                //                    // Evaluate R² on the training subset
-                //                    var predictions = trainedModel.Transform(trainData);
-                //                    var metrics = mlContext.Regression.Evaluate(predictions, labelColumnName: "Label");
-
-                //                    if (MCP_Method == "Lasso")
-                //                    {
-                //                        Lasso.R_sq[wdInd, hrInd, tpInd] = (float)metrics.RSquared;
-
-                //                    }
-                //                    else
-                //                    {
-                //                        Ridge.R_sq[wdInd, hrInd, tpInd] = (float)metrics.RSquared;
-                //                    }
-                //                }*/
-                //            }
-                //        }
-                //    }
-
-                //    /*
-                //    // Train a single "global" model for All_Weights, All_Intercept, All_R_sq
-                //    List<ModelInput> globalSamples = new List<ModelInput>();
-                //    foreach (var c in Conc_Data_ML)
-                //    {
-                //        globalSamples.Add(new ModelInput
-                //        {
-                //            TargetWS = c.Target_WS,
-                //            RefWS = c.Ref_WS,
-                //            RefWD = c.Ref_WD,
-                //            RefTemp = c.Ref_Temp,
-                //            RefPress = c.Ref_Pressure
-                //        });
-                //    }
-
-                //    if (globalSamples.Count > 5)
-                //    {
-                //        var mlContextGlobal = new Microsoft.ML.MLContext();
-                //        var trainDataGlobal = mlContextGlobal.Data.LoadFromEnumerable(globalSamples);
-
-                //        float l1Val = (MCP_Method == "Lasso") ? 0.1f : 0f;
-                //        float l2Val = (MCP_Method == "Ridge") ? 0.1f : 0f;
-
-                //        var pipelineGlobal = mlContextGlobal.Transforms
-                //            .Concatenate("Features", "RefWS", "RefWD", "RefTemp", "RefPress")
-                //            .Append(mlContextGlobal.Transforms.NormalizeMeanVariance("Features"))
-                //            .Append(mlContextGlobal.Regression.Trainers.Sdca(
-                //                labelColumnName: "TargetWS",
-                //                featureColumnName: "Features",
-                //                l1Regularization: l1Val,
-                //                l2Regularization: l2Val
-                //            ));
-
-                //        var modelGlobal = pipelineGlobal.Fit(trainDataGlobal);
-                //        var paramGlobal = modelGlobal.LastTransformer.Model
-                //                          as Microsoft.ML.Trainers.LinearRegressionModelParameters;
-
-                //        var predictionsGlobal = modelGlobal.Transform(trainDataGlobal);
-                //        var metricsGlobal = mlContextGlobal.Regression.Evaluate(predictionsGlobal, labelColumnName: "");
-
-                //        if (paramGlobal != null)
-                //        {
-                //            var wG = paramGlobal.Weights.ToArray();
-                //            float bG = paramGlobal.Bias;
-                //            float r2G = (float)metricsGlobal.RSquared;
-
-                //            if (MCP_Method == "Lasso")
-                //            {
-                //                Lasso.All_Weights = wG;
-                //                Lasso.All_Intercept = bG;
-                //                Lasso.All_R_sq = r2G;
-                //            }
-                //            else
-                //            {
-                //                Ridge.All_Weights = wG;
-                //                Ridge.All_Intercept = bG;
-                //                Ridge.All_R_sq = r2G;
-                //            }
-                //        }
-
-                //        //Create a PredictionEngine to estimate the entire Ref_Data series
-                //        var predEngineGlobal = mlContextGlobal.Model.CreatePredictionEngine<ModelInput, ModelOutput>(modelGlobal);
-
-                //        if (MCP_Method == "Lasso")
-                //        {
-                //            Array.Resize(ref Lasso.LT_WS_Est, Ref_Data.Length);
-                //            for (int i = 0; i < Ref_Data.Length; i++)
-                //            {
-                //                var input = new ModelInput
-                //                {
-                //                    RefWS = Ref_Data[i].This_WS,
-                //                    RefWD = Ref_Data[i].This_WD,
-                //                    RefTemp = Ref_Data[i].This_Temp,
-                //                    RefPress = Ref_Data[i].This_Pressure
-                //                };
-
-                //                var predicted = predEngineGlobal.Predict(input);
-
-                //                Lasso.LT_WS_Est[i].This_Date = Ref_Data[i].This_Date;
-                //                Lasso.LT_WS_Est[i].This_WD = Ref_Data[i].This_WD;
-                //                Lasso.LT_WS_Est[i].This_WS = predicted.PredictedWS;
-                //            }
-                //        }
-                //        else // "Ridge"
-                //        {
-                //            Array.Resize(ref Ridge.LT_WS_Est, Ref_Data.Length);
-                //            for (int i = 0; i < Ref_Data.Length; i++)
-                //            {
-                //                var input = new ModelInput
-                //                {
-                //                    RefWS = Ref_Data[i].This_WS,
-                //                    RefWD = Ref_Data[i].This_WD,
-                //                    RefTemp = Ref_Data[i].This_Temp,
-                //                    RefPress = Ref_Data[i].This_Pressure
-                //                };
-
-                //                var predicted = predEngineGlobal.Predict(input);
-
-                //                Ridge.LT_WS_Est[i].This_Date = Ref_Data[i].This_Date;
-                //                Ridge.LT_WS_Est[i].This_WD = Ref_Data[i].This_WD;
-                //                Ridge.LT_WS_Est[i].This_WS = predicted.PredictedWS;
-                //            }
-                //        }
-                //    }
-                //    */
-
-                //    //Uncertainty
-                //    /*
-                //    if (!Use_All_Data)
-                //    {
-                //        float avgEst = 0f;
-                //        if (MCP_Method == "Lasso")
-                //        {
-                //            avgEst = Stat.Calc_Avg_WS(
-                //                Lasso.LT_WS_Est, 0, 10000, Ref_Start, Ref_End,
-                //                0, 360, true, 0, true, 0, this
-                //            );
-                //        }
-                //        else
-                //        {
-                //            avgEst = Stat.Calc_Avg_WS(
-                //                Ridge.LT_WS_Est, 0, 10000, Ref_Start, Ref_End,
-                //                0, 360, true, 0, true, 0, this
-                //            );
-                //        }
-
-                //        return avgEst;
-                //    }
-                //    */
-                //}
+                
 
                 if (Use_All_Data == false && MCP_Method != "Method of Bins" && MCP_Method != "Matrix") // if conducting uncertainty analysis (with a linear model) then return the LT value
                     return LT_WS_Est;
@@ -2926,8 +2540,7 @@ namespace MCP
                 if (MCP_Method == "Variance Ratio") Array.Resize(ref MCP_Varrat.LT_WS_Est, Ref_Data.Length);
                 if (MCP_Method == "Method of Bins") Array.Resize(ref These_Bins.LT_WS_Est, Ref_Data.Length);
                 if (MCP_Method == "Matrix") Array.Resize(ref This_Matrix.LT_WS_Est, Ref_Data.Length);
-                //if (MCP_Method == "Lasso") Array.Resize(ref Lasso.LT_WS_Est, Ref_Data.Length);
-                //if (MCP_Method == "Ridge") Array.Resize(ref Ridge.LT_WS_Est, Ref_Data.Length);
+              
 
                 Random This_Rand = Get_Random_Number();
                 float Last_WS = 0;
@@ -3065,100 +2678,7 @@ namespace MCP
                     }
 
 
-                    /*
-                    else if (MCP_Method == "Lasso" || MCP_Method == "Ridge")
-                    {
-                        // Determine bin indices for the current record
-                        This_WD_ind = Get_WD_ind(Ref_Data[i].This_WD, Get_Num_WD());
-                        This_Hour_ind = Get_Hourly_Index(Ref_Data[i].This_Date.Hour);
-                        This_Temp_ind = Get_Temp_ind(This_WD_ind, This_Hour_ind, Ref_Data[i].This_Temp);
-
-                        // Look up the PredictionEngine for this bin
-                        var key = (This_WD_ind, This_Hour_ind, This_Temp_ind);
-                        if (binEngines.ContainsKey(key))
-                        {
-                            var engine = binEngines[key];
-                            var input = new ModelInput
-                            {
-                                RefWS = Ref_Data[i].This_WS,
-                                //RefWD = Ref_Data[i].This_WD,
-                                RefTemp = Ref_Data[i].This_Temp,
-                                RefPress = Ref_Data[i].This_Pressure
-                            };
-                            var output = engine.Predict(input);
-
-                            //Assign the prediction to LT_WS_Est
-                            Lasso.LT_WS_Est[i].This_Date = Ref_Data[i].This_Date;
-                            Lasso.LT_WS_Est[i].This_WD = Ref_Data[i].This_WD;
-                            Lasso.LT_WS_Est[i].This_WS = output.PredictedWS;
-                        }
-                        else
-                        {
-                            //Fallback: assign the reference wind speed if no engine is found
-                            Lasso.LT_WS_Est[i].This_Date = Ref_Data[i].This_Date;
-                            Lasso.LT_WS_Est[i].This_WD = Ref_Data[i].This_WD;
-                            Lasso.LT_WS_Est[i].This_WS = Ref_Data[i].This_WS;
-                        }
-                    }
-                    */
-
-
-
-
-                    //This part of the code is commentated because it will require a previous normalization
-                    //Instead, a prediction engine was created to avoid doing it manually. 
-                    // Keeping the code here for the moment, in case it needs to be used lately.
-
-
-
-                    //else if (MCP_Method == "Lasso" || MCP_Method == "Ridge")
-                    //{
-
-
-                    //    float predicted = 0;
-                    //    float intercept = 0;
-                    //    if (MCP_Method == "Lasso")
-                    //    {
-                    //        intercept = Lasso.Intercept[This_WD_ind, This_Hour_ind, This_Temp_ind];
-                    //        float WRefWS = Lasso.Weights[This_WD_ind, This_Hour_ind, This_Temp_ind, 0];
-                    //        float WRefWD = Lasso.Weights[This_WD_ind, This_Hour_ind, This_Temp_ind, 1];
-                    //        float WRefTemp = Lasso.Weights[This_WD_ind, This_Hour_ind, This_Temp_ind, 2];
-                    //        float WRefPres = Lasso.Weights[This_WD_ind, This_Hour_ind, This_Temp_ind, 3];
-
-                    //        predicted = intercept
-                    //                  + Ref_Data[i].This_WS * WRefWS
-                    //                  + Ref_Data[i].This_WD * WRefWD
-                    //                  + Ref_Data[i].This_Temp * WRefTemp
-                    //                  + Ref_Data[i].This_Pressure * WRefPres;
-
-                    //        //
-                    //        if (predicted < 0) predicted = 0;
-
-                    //        Lasso.LT_WS_Est[i].This_Date = Ref_Data[i].This_Date;
-                    //        Lasso.LT_WS_Est[i].This_WD = Ref_Data[i].This_WD;
-                    //        Lasso.LT_WS_Est[i].This_WS = predicted;
-                    //    }
-                    //    else // 
-                    //    {
-                    //        intercept = Ridge.Intercept[This_WD_ind, This_Hour_ind, This_Temp_ind];
-                    //        float WRefWS = Ridge.Weights[This_WD_ind, This_Hour_ind, This_Temp_ind, 0];
-                    //        float WRefWD = Ridge.Weights[This_WD_ind, This_Hour_ind, This_Temp_ind, 1];
-                    //        float WRefTemp = Ridge.Weights[This_WD_ind, This_Hour_ind, This_Temp_ind, 2];
-                    //        float WRefPres = Ridge.Weights[This_WD_ind, This_Hour_ind, This_Temp_ind, 3];
-
-                    //        predicted = intercept
-                    //                  + Ref_Data[i].This_WS * WRefWS
-                    //                  + Ref_Data[i].This_WD * WRefWD
-                    //                  + Ref_Data[i].This_Temp * WRefTemp
-                    //                  + Ref_Data[i].This_Pressure * WRefPres;
-
-                    //        if (predicted < 0) predicted = 0;
-
-                    //        Ridge.LT_WS_Est[i].This_Date = Ref_Data[i].This_Date;
-                    //        Ridge.LT_WS_Est[i].This_WD = Ref_Data[i].This_WD;
-                    //        Ridge.LT_WS_Est[i].This_WS = predicted;
-                    //    }
-                    //}
+                    
                 }
 
 
@@ -3873,7 +3393,7 @@ namespace MCP
         {             
             if ((Get_MCP_Method() == "Orth. Regression" && MCP_Ortho.LT_WS_Est != null) || (Get_MCP_Method() == "Method of Bins" && MCP_Bins.LT_WS_Est != null) 
                 || (Get_MCP_Method() == "Variance Ratio" && MCP_Varrat.LT_WS_Est != null) || (Get_MCP_Method() == "Matrix" && MCP_Matrix.LT_WS_Est != null)
-                || (Get_MCP_Method() == "Lasso" && Lasso.LT_WS_Est != null) || (Get_MCP_Method() == "Ridge" && Ridge.LT_WS_Est != null) || (Get_MCP_Method() == "LightGBM" && LightGBM.LT_WS_Est != null))
+                || (Get_MCP_Method() == "LightGBM" && LightGBM.LT_WS_Est != null))
             {
                 btnExportTS.Enabled = true;
                 btnExportTAB.Enabled = true;
@@ -3895,8 +3415,6 @@ namespace MCP
                 (Get_MCP_Method() == "Method of Bins" && Uncert_Bins.Length > 0) || 
                 (Get_MCP_Method() == "Variance Ratio" && Uncert_Varrat.Length > 0) ||
                 (Get_MCP_Method() == "Matrix" && Uncert_Matrix.Length > 0) ||
-                (Get_MCP_Method() == "Lasso" && Uncert_Matrix.Length > 0) ||
-                (Get_MCP_Method() == "Ridge" && Uncert_Matrix.Length > 0) ||
                 (Get_MCP_Method() == "LightGBM" && Uncert_Matrix.Length > 0))
                 btnExportMultitest.Enabled = true;
             else
@@ -4589,36 +4107,6 @@ namespace MCP
                     else if (Get_MCP_Method() == "Matrix" && MCP_Matrix.LT_WS_Est != null)
                     {
                         foreach (Site_data LT_WS_WD in MCP_Matrix.LT_WS_Est)
-                        {
-                            if (LT_WS_WD.This_Date >= Export_Start && LT_WS_WD.This_Date <= Export_End)
-                            {
-                                file.Write(LT_WS_WD.This_Date);
-                                file.Write(",");
-                                file.Write(Math.Round(LT_WS_WD.This_WS, 3));
-                                file.Write(",");
-                                file.Write(Math.Round(LT_WS_WD.This_WD, 2));
-                                file.WriteLine();
-                            }
-                        }
-                    }
-                    else if (Get_MCP_Method() == "Lasso" && Lasso.LT_WS_Est != null)
-                    {
-                        foreach (Site_data LT_WS_WD in Lasso.LT_WS_Est)
-                        {
-                            if (LT_WS_WD.This_Date >= Export_Start && LT_WS_WD.This_Date <= Export_End)
-                            {
-                                file.Write(LT_WS_WD.This_Date);
-                                file.Write(",");
-                                file.Write(Math.Round(LT_WS_WD.This_WS, 3));
-                                file.Write(",");
-                                file.Write(Math.Round(LT_WS_WD.This_WD, 2));
-                                file.WriteLine();
-                            }
-                        }
-                    }
-                    else if (Get_MCP_Method() == "Ridge" && Ridge.LT_WS_Est != null)
-                    {
-                        foreach (Site_data LT_WS_WD in Ridge.LT_WS_Est)
                         {
                             if (LT_WS_WD.This_Date >= Export_Start && LT_WS_WD.This_Date <= Export_End)
                             {
